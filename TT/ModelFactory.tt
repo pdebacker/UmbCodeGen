@@ -1,0 +1,946 @@
+﻿<#@ template language="C#" debug="false" hostspecific="true"#>
+<#@output extension=".cs"#>
+<#@ assembly name="System.Core"#>
+<#@ assembly name="$(ProjectDir)binaries\UmbCodeGen.dll"#>
+<#@ import namespace="UmbCodeGen.CodeGen" #>
+<#@ import namespace="UmbCodeGen.Models" #>
+<#@ import namespace="System.IO" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Reflection" #>
+<#
+    var configFile = @"..\..\App_Data\typelib.config";
+    Code = new CodeGenTools(this);
+    Code.ExcludePropertyRegEx = "^Seo|^Social|^OgNote|tip";
+    
+    if (Code.LoadMetaData(configFile))
+        GenerateModelFactory();
+#>
+<#+
+void GenerateModelFactory()
+{
+    #>
+    namespace <#=Code.NameSpace()#>
+    {
+        using System;
+        using System.IO;
+        using System.Text;
+        using System.Xml;
+        using System.Linq;
+        using System.Runtime.Serialization;
+        using System.Globalization;
+        using System.Collections;
+        using System.Collections.Generic;
+        using System.Reflection;
+        using System.ComponentModel.DataAnnotations;		// requires System.ComponentModel.DataAnnotations reference
+
+        using umbraco.interfaces;
+        using umbraco.MacroEngines;
+        using umbraco.NodeFactory;
+
+		using UmbCodeGen.CodeGen;
+    
+        public partial class ModelFactory
+        {
+            #region Public Methods
+
+            public static T CreateModel<T>(INode node) where T : class, new()  
+            {
+                var modelFactory = new ModelFactory(); 
+                return modelFactory.CreateModelInternal<T>(node);
+            }
+
+            public static void FillModel(object model, INode node)
+            {
+                var modelFactory = new ModelFactory(); 
+                modelFactory.FillModelInternal(model, node);
+            }
+
+            #endregion
+            #region Protected Methods
+
+            protected virtual T CreateModelInternal<T>(INode node) where T : class, new()
+            {
+                var model = new T();
+                FillModelInternal(model, node);
+                return model;        
+            }
+
+            protected virtual void FillModelInternal(object model, INode node)
+            {
+                foreach (PropertyInfo property in model.GetType().GetProperties())
+                {
+                    var propertyAttrib = property.GetCustomAttributes(true).FirstOrDefault(a => a.GetType().Name.Equals("PropertyAttribute")) as PropertyAttribute;
+                    if (propertyAttrib != null)
+                    {
+                        string modelType = GetPropertyType(property);
+
+                        if (property.PropertyType.IsClass == false || property.PropertyType.IsEnum || property.PropertyType.Name == "String")
+                        {
+                            FillModelProperty(model, property, modelType, propertyAttrib.Alias, node);
+                        }
+                        else if (property.PropertyType.IsClass && property.PropertyType.IsGenericType == false)
+                        {
+                            switch (modelType)
+                            {
+                                case "HyperLink": FillHyperLinkValue(model, property, propertyAttrib.Alias, node); break;
+                                case "HyperLinkList": FillHyperLinkListValue(model, property, propertyAttrib.Alias, node); break;
+                                case "MediaInfo": FillMediaInfoValue(model, property, propertyAttrib.Alias, node); break;
+                                case "DataGrid": FillDataGridValue(model, property, propertyAttrib.Alias, node); break;
+                                //case "NodeIdList": FillNodeListValue(model, property, propertyAttrib.Alias, node); break; TODO: Obsolete ?
+                                default : FillModelPropertyClass(model, property, propertyAttrib.Alias, node); break;
+                            }
+                        }
+                        else if (property.PropertyType.IsClass && property.PropertyType.IsGenericType == true)
+                        {
+                            FillModelPropertyList(model, property, propertyAttrib.Alias, node);
+                        }
+                    }
+                    else
+                    {
+                        var childrenAttrib = property.GetCustomAttributes(true).FirstOrDefault(a => a.GetType().Name.Equals("ChildrenAttribute")) as ChildrenAttribute;
+                        if (childrenAttrib != null && (property.PropertyType.IsClass || property.PropertyType.IsInterface))
+                        {
+                            if (property.PropertyType.IsGenericType)
+                            {
+                                FillModelPropertyChildList(model, property, childrenAttrib.NodeAlias, childrenAttrib.AllDescendants, node);
+                            }
+                            else
+                            {
+                                FillModelPropertyChild(model, property, childrenAttrib.NodeAlias, childrenAttrib.AllDescendants, node);
+                            }
+                        }
+                    }
+                }
+            }
+
+            protected virtual string GetPropertyType(PropertyInfo property)
+            {
+                switch (property.PropertyType.Name)
+                {
+                    case "String": return "string";
+                    case "Int32": return "int";
+                    case "Int64": return "int";
+                    case "Boolean": return "bool";
+                    case "Double": return "double";
+					case "DateTime" : return "DateTime";
+                }
+
+                if (property.PropertyType.IsEnum)
+                    return "enum";
+
+                if (property.PropertyType.BaseType != null && property.PropertyType.BaseType.Name.Equals("DataGrid"))
+                    return "DataGrid";
+
+                return property.PropertyType.Name;
+            }
+
+            protected virtual void FillModelPropertyClass(object model, PropertyInfo property, string alias, INode node)
+            {
+                ConstructorInfo ctor = property.PropertyType.GetConstructor(BindingFlags.Instance | BindingFlags.Public, null, CallingConventions.HasThis, new Type[0], null);
+                if (ctor != null)
+                {
+                    var instance = ctor.Invoke(BindingFlags.Public, null, new object[0], null);
+                    if (instance != null)
+                    {
+                        var referenceNode = new Node( GetPropertyInt(node, alias) );
+                        FillModelInternal( instance, referenceNode );
+                        property.SetValue(model, instance, BindingFlags.SetProperty, null, null, null);
+                    }
+                }
+            }
+
+			protected virtual void FillModelPropertyList(object model, PropertyInfo property, string alias, INode node)
+            {
+                if (property.PropertyType.GetGenericArguments().Length == 1)
+                {
+                    Type type = property.PropertyType.GetGenericArguments()[0];
+                    if (type.IsEnum)
+                    {
+                        FillEnumListValue(model, property, alias, node);
+                    }
+                    else
+                    {
+                        switch (type.Name)
+                        {
+                            case "HyperLink": this.FillHyperLinkList(model, property, alias, node); break;
+                            case "DateTime": this.FillDateTimeList(model, property, alias, node); break;
+							case "String" : this.FillStringList(model, property, alias, node); break;
+                            default: this.FillIntList(model, property, alias, node); break;
+                        }
+                    }
+                }
+            }
+			
+            protected virtual void FillIntList(object model, PropertyInfo property, string alias, INode node)
+            {
+                if (property.PropertyType.GetGenericArguments().Length == 1)
+                {
+                    Type type = property.PropertyType.GetGenericArguments()[0];
+                    ConstructorInfo ctor = property.PropertyType.GetConstructor(BindingFlags.Instance | BindingFlags.Public, null, CallingConventions.HasThis, new Type[0], null);
+                    if (ctor != null)
+                    {
+                        var instance = ctor.Invoke(BindingFlags.Public, null, new object[0], null) as IList;
+                        if (instance != null)
+                        {
+                            ConstructorInfo ctorItem = type.GetConstructor(BindingFlags.Instance | BindingFlags.Public, null, CallingConventions.HasThis, new Type[0], null);
+                            IntList intList = GetIntListValue(node, alias);
+                            if (intList != null)
+                            {
+                                foreach (int id in intList)
+                                {
+                                    if (type.IsClass)
+                                    {
+                                        var instanceItem = ctorItem.Invoke(BindingFlags.Public, null, new object[0], null);
+                                        var referenceNode = new Node(id);
+                                        FillModelInternal(instanceItem, referenceNode);
+                                        instance.Add(instanceItem);
+                                    }
+                                    else
+                                    {
+                                        instance.Add(id);
+                                    }
+                                }
+                            }
+                            property.SetValue(model, instance, BindingFlags.SetProperty, null, null, null);
+                        }
+                    }
+                }
+            }
+
+	        protected virtual void FillStringList(object model, PropertyInfo property, string alias, INode node)
+			{
+				if (property.PropertyType.GetGenericArguments().Length == 1)
+				{
+					StringList stringList = GetStringListValue(node, alias);
+					if (stringList != null)
+						property.SetValue(model, stringList, BindingFlags.SetProperty, null, null, null);
+				}
+			}
+			
+            protected virtual void FillHyperLinkList(object model, PropertyInfo property, string alias, INode node)
+            {
+                if (property.PropertyType.GetGenericArguments().Length == 1)
+                {
+                    Type type = property.PropertyType.GetGenericArguments()[0];
+                    ConstructorInfo ctor = property.PropertyType.GetConstructor(BindingFlags.Instance | BindingFlags.Public, null, CallingConventions.HasThis, new Type[0], null);
+                    if (ctor != null)
+                    {
+                        HyperLinkList hyperLinkList = this.GetHyperLinkList(node, alias);
+                        var instance = ctor.Invoke(BindingFlags.Public, null, new object[0], null) as IList;
+                        if (instance != null && hyperLinkList.Count > 0)
+                        {
+                            foreach (HyperLink hyperLink in hyperLinkList)
+                                instance.Add(hyperLink);
+
+                            property.SetValue(model, instance, BindingFlags.SetProperty, null, null, null);
+                        }
+                    }
+                }
+            }
+
+            protected virtual void FillDateTimeList(object model, PropertyInfo property, string alias, INode node)
+            {
+                if (property.PropertyType.GetGenericArguments().Length == 1)
+                {
+                    string values = GetPropertyString(node, alias);
+                    if (!string.IsNullOrEmpty(values))
+                    {
+                        var result = new List<DateTime>();
+                        string[] dates = values.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                        foreach (var date in dates)
+                        {
+                            DateTime dt;
+                            if (DateTime.TryParseExact(date, "yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.NoCurrentDateDefault, out dt))
+                            {
+                                result.Add(dt);
+                            }
+                        }
+                        property.SetValue(model, result, BindingFlags.SetProperty, null, null, null);
+                    }
+                }
+            }
+
+            protected virtual void FillModelPropertyChild(object model, PropertyInfo property, string alias, bool allDescendants, INode node)
+            {
+                ConstructorInfo ctor = property.PropertyType.GetConstructor(BindingFlags.Instance | BindingFlags.Public, null, CallingConventions.HasThis, new Type[0], null);
+                if (ctor != null)
+                {
+                    var instance = ctor.Invoke(BindingFlags.Public, null, new object[0], null);
+                    if (instance != null)
+                    {
+                        INode childNode = this.GetDescendants(node, alias, allDescendants).FirstOrDefault();
+                        if (childNode != null)
+                        {
+                            FillModelInternal(instance, childNode);
+                            property.SetValue(model, instance, BindingFlags.SetProperty, null, null, null);
+                        }
+                    }
+                }
+            }
+
+            protected virtual void FillModelPropertyChildList(object model, PropertyInfo property, string alias, bool allDescendants, INode node)
+            {
+                if (property.PropertyType.GetGenericArguments().Length == 1)
+                {
+                    Type type = property.PropertyType.GetGenericArguments()[0];
+                    ConstructorInfo ctor = property.PropertyType.GetConstructor(BindingFlags.Instance | BindingFlags.Public, null, CallingConventions.HasThis, new Type[0], null);
+                    if (ctor != null)
+                    {
+                        var listInstance = ctor.Invoke(BindingFlags.Public, null, new object[0], null) as IList;
+                        if (listInstance != null)
+                        {
+                            foreach (INode childNode in this.GetDescendants(node, alias, allDescendants))
+                            {
+                                ConstructorInfo ctorItem = type.GetConstructor(BindingFlags.Instance | BindingFlags.Public, null, CallingConventions.HasThis, new Type[0], null);
+                                var instanceItem = ctorItem.Invoke(BindingFlags.Public, null, new object[0], null);
+                                FillModelInternal(instanceItem, childNode);
+                                listInstance.Add(instanceItem);
+                            }
+                            property.SetValue(model, listInstance, BindingFlags.SetProperty, null, null, null);
+                        }
+                    }
+                }
+            }
+
+            public IEnumerable<INode> GetDescendants(INode node, string alias, bool allDescendants)
+            {
+                foreach (INode child in node.ChildrenAsList)
+                {
+                    if (child.NodeTypeAlias.Equals(alias))
+                        yield return child;
+
+                    if (allDescendants)
+                    {
+                        foreach (INode grandChild in GetDescendants(child, alias, allDescendants))
+                        {
+                            yield return grandChild;
+                        }
+                    }
+                }
+                yield break;
+            }
+
+            protected virtual void FillModelProperty(object model, PropertyInfo property, string type, string alias, INode node)
+            {
+                switch(type)
+                {
+                    case "string": FillStringValue(model, property, alias, node); break;
+                    case "int": FillIntValue(model, property, alias, node); break;
+                    case "bool": FillBoolValue(model, property, alias, node); break;
+                    case "double": FillDoubleValue(model, property, alias, node); break;
+                    case "DateTime": FillDateTimeValue(model, property, alias, node); break;
+                }
+                if (property.PropertyType.IsEnum)
+                    FillEnumValue(model, property, alias, node);
+
+            }
+
+			protected virtual void FillEnumValue(object model, PropertyInfo property, string alias, INode node)
+			{
+				string value;
+				value = GetPropertyString(node, alias);
+				if (!string.IsNullOrEmpty(value))
+				{
+					object enumValue = GetEnumValue(value, property.PropertyType);
+					if (enumValue != null)
+						property.SetValue(model, enumValue, BindingFlags.SetProperty, null, null, null);
+				}
+			}
+
+			protected virtual void FillEnumListValue(object model, PropertyInfo property, string alias, INode node)
+			{
+				string values;
+				values = GetPropertyString(node, alias);
+				if (!string.IsNullOrEmpty(values))
+				{
+					if (property.PropertyType.GetGenericArguments().Length == 1)
+					{
+						Type type = property.PropertyType.GetGenericArguments()[0];
+						ConstructorInfo ctor = property.PropertyType.GetConstructor(BindingFlags.Instance | BindingFlags.Public, null, CallingConventions.HasThis, new Type[0], null);
+						if (ctor != null)
+						{
+							var instance = ctor.Invoke(BindingFlags.Public, null, new object[0], null) as IList;
+							if (instance != null)
+							{
+								string[] splittedValues = values.Split(new char[] { ',' });
+								foreach (string value in splittedValues)
+								{
+									object enumValue = GetEnumValue(value, type);
+									if (enumValue != null)
+										instance.Add(enumValue);
+								}
+
+								property.SetValue(model, instance, BindingFlags.SetProperty, null, null, null);
+							}
+						}
+					}
+				}
+			}
+
+			protected virtual object GetEnumValue(string value, Type type)
+			{
+				if (!string.IsNullOrEmpty(value))
+				{
+					string enumValueString = Naming.IdentifierName(value);
+					if (type.IsEnumDefined(enumValueString))
+					{
+						object enumValue = Enum.Parse(type, enumValueString);
+						return enumValue;
+					}
+					else
+					{
+						int enumValueInt = 0;
+						if (int.TryParse(value, out enumValueInt))
+							return enumValueInt;
+					}
+				}
+				return null;
+			}
+
+
+            protected virtual void FillStringValue(object model, PropertyInfo property, string alias, INode node)
+            {
+                string value;
+                if (alias.Equals("NodeName"))
+                    value = node.Name;
+                else if (alias.Equals("NodeUrl"))
+                    value = node.NiceUrl;
+                else
+                    value = GetPropertyString(node, alias);
+                property.SetValue(model, value, BindingFlags.SetProperty, null, null, null);
+            }
+
+            protected virtual void FillIntValue(object model, PropertyInfo property, string alias, INode node)
+            {
+                int value;
+                if (alias.Equals("NodeId"))
+                    value = node.Id;
+                else
+                    value = GetPropertyInt(node, alias);
+                property.SetValue(model, value, BindingFlags.SetProperty, null, null, null);
+            }
+
+            protected virtual void FillDoubleValue(object model, PropertyInfo property, string alias, INode node)
+            {
+                double value = GetPropertyDouble(node, alias);
+                property.SetValue(model, value, BindingFlags.SetProperty, null, null, null);
+            }
+
+            protected virtual void FillBoolValue(object model, PropertyInfo property, string alias, INode node)
+            {
+                bool value = GetPropertyBool(node, alias);
+                property.SetValue(model, value, BindingFlags.SetProperty, null, null, null);
+            }
+
+			protected virtual void FillDateTimeValue(object model, PropertyInfo property, string alias, INode node)
+			{
+				string format = GetDateTimeFormat(property);
+				DateTime value = GetPropertyDateTime(node, alias, format);
+				property.SetValue(model, value, BindingFlags.SetProperty, null, null, null);
+			}
+
+			protected virtual string GetDateTimeFormat(PropertyInfo property)
+			{
+			    string format = null;
+				if (property != null)
+				{
+					var dateTimeFormatAttrib = property.GetCustomAttributes(true).FirstOrDefault(a => a.GetType().Name.Equals("DateTimeFormatAttribute")) as DateTimeFormatAttribute;
+					if (dateTimeFormatAttrib == null)
+					{
+						MetadataTypeAttribute metadataType = property.DeclaringType.GetCustomAttributes(typeof(MetadataTypeAttribute), true).FirstOrDefault() as MetadataTypeAttribute;
+						if (metadataType != null)
+						{
+							var metaProperty = metadataType.MetadataClassType.GetProperty(property.Name);
+							if (metaProperty != null)
+							{
+								dateTimeFormatAttrib = metaProperty.GetCustomAttributes(true).FirstOrDefault(a => a.GetType().Name.Equals("DateTimeFormatAttribute")) as DateTimeFormatAttribute;
+								if (dateTimeFormatAttrib != null)
+								{
+									format = dateTimeFormatAttrib.DateTimeFormat;
+								}
+							}
+						}
+					}
+					else
+					{
+						format = dateTimeFormatAttrib.DateTimeFormat;
+					}
+				}
+				return format;
+			}
+
+            protected virtual void FillMediaInfoValue(object model, PropertyInfo property, string alias, INode node)
+            {
+                MediaInfo value = GetMedia(node, alias);
+                property.SetValue(model, value, BindingFlags.SetProperty, null, null, null);
+            }
+
+			// TODO: obsolete ?
+            //protected virtual void FillNodeListValue(object model, PropertyInfo property, string alias, INode node)
+            //{
+            //    NodeIdList value = GetNodeListValue(node, alias);
+            //    property.SetValue(model, value, BindingFlags.SetProperty, null, null, null);
+            //}
+
+            protected virtual void FillHyperLinkListValue(object model, PropertyInfo property, string alias, INode node)
+            {
+                HyperLinkList value = GetHyperLinkList(node, alias);
+                property.SetValue(model, value, BindingFlags.SetProperty, null, null, null);
+            }
+
+            protected virtual void FillHyperLinkValue(object model, PropertyInfo property, string alias, INode node) 
+            {
+                HyperLink value = GetHyperLink(node, alias);
+                property.SetValue(model, value, BindingFlags.SetProperty, null, null, null);
+            }
+
+            protected virtual void FillXmlTypeValue<T>(object model, PropertyInfo property, string alias, INode node) where T : class, new()
+            {
+                T value = GetXmlType<T>(node, alias);
+                property.SetValue(model, value, BindingFlags.SetProperty, null, null, null);
+            }
+
+            protected virtual void FillDataGridValue(object model, PropertyInfo property, string alias, INode node)
+            {
+                string methodName = "Get" + property.PropertyType.Name;
+
+                var grid = this.GetType().InvokeMember( methodName, 
+                                                        BindingFlags.InvokeMethod | BindingFlags.NonPublic | BindingFlags.Instance, 
+                                                        null, 
+                                                        this, 
+                                                        new object[] { node, alias });
+                if (grid != null)
+                {
+                    property.SetValue(model, grid, BindingFlags.SetProperty, null, null, null);
+                }
+            }
+            #endregion
+        
+            <#+
+            //*********************************************************
+            // Write Complex <T> Get methods
+            //*********************************************************
+            #>
+            #region Complex Get methods
+
+            <#+ WriteNodeListGetter(); #>
+            <#+ WriteMultiUrlPickerGetter(); #>
+            <#+ WriteHyperLinkTypeGetter(); #>
+            <#+ WriteXmlTypeGetter(); #>
+            <#+ WriteMediaGetter(); #>
+
+            <#+ foreach(var dataType in Code.GetDataGridTypeItems()) 
+            {
+                WriteDataGridGetter(dataType);
+            }#> 
+
+            #endregion
+
+            <#+
+            //*********************************************************
+            // Write Property Get methods
+            //*********************************************************
+            #>
+
+           #region Property Get Methods
+           private string GetPropertyString(INode node, string propertyName)
+           {
+                IProperty property = null;
+                property = node.GetProperty(propertyName);
+                if (property != null) return property.Value;
+                return null;
+            }
+
+            private int GetPropertyInt(INode node, string propertyName)
+            {
+                int intValue = 0;
+                IProperty property = null;
+                property = node.GetProperty(propertyName);
+                if (property != null)
+                {
+                    int.TryParse(property.Value, out intValue);
+                }
+                return intValue;
+            }
+
+            private double GetPropertyDouble(INode node, string propertyName)
+            {
+                double value = 0;
+                IProperty property = null;
+                property = node.GetProperty(propertyName);
+                if (property != null)
+                {
+                    double.TryParse(property.Value, out value);
+                }
+                return value;
+            }
+
+            private DateTime GetPropertyDateTime(INode node, string propertyName, string format)
+            {
+                DateTime value = DateTime.MinValue;
+                IProperty property = null;
+                property = node.GetProperty(propertyName);
+                if (property != null)
+                {
+                    value = GetDateFromString(property.Value, format);
+                }
+                return value;
+            }
+            private bool GetPropertyBool(INode node, string propertyName)
+            {
+                IProperty property = null;
+                property = node.GetProperty(propertyName);
+                if (property != null && !string.IsNullOrEmpty(property.Value))
+                {
+                    if (property.Value.Equals("0")) return false;
+                    if (property.Value.Equals("1")) return true;
+                    if (property.Value.ToUpper().Equals("FALSE")) return false;
+                    if (property.Value.ToUpper().Equals("TRUE")) return true;
+                }
+                return false;
+            }
+            private DateTime GetDateFromString(string date, string format)
+            {
+                DateTime dt = DateTime.MinValue;
+                if (string.IsNullOrEmpty(date)) return dt;
+                date = date.Trim();
+ 
+				if (!string.IsNullOrEmpty(format))
+				{
+					if (DateTime.TryParseExact(date, format, CultureInfo.InvariantCulture, DateTimeStyles.None, out dt))
+						return dt;
+				}
+
+                //
+                // TODO: review this code: can't find documentation how Umbraco convert DateTime input to Xml string values. Check if this conversion depends on culture settings.
+                //
+
+                if (DateTime.TryParseExact(date, "dd/MM/yyyy HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out dt))
+                    return dt;
+                if (DateTime.TryParseExact(date, "dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out dt))
+                    return dt;
+                if (DateTime.TryParseExact(date, "dd/MM/yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out dt))
+                    return dt;
+                if (DateTime.TryParse(date, CultureInfo.InvariantCulture, DateTimeStyles.None, out dt))
+                    return dt;
+
+                try
+                {
+                    dt = System.Xml.XmlConvert.ToDateTime(date, XmlDateTimeSerializationMode.Utc);
+                    return dt;
+                }
+                catch
+                {
+                }
+
+                return DateTime.MinValue;
+            }
+
+            private T Deserialize<T>(string serial) where T : class, new()
+            {
+                T result = null;
+                try
+                {
+                    var sr = new DataContractSerializer(typeof(T));
+                    serial = EncloseTag<T>(serial);
+                    using (Stream stream = new MemoryStream(Encoding.UTF8.GetBytes(serial)))
+                    {
+                        result = sr.ReadObject(stream) as T;
+                    }
+                }
+                catch (Exception)
+                {
+                    result = new T();
+                }
+                return result;
+            }
+
+            private string EncloseTag<T>(string serial)
+            {
+                string contractName = GetContactName<T>();
+
+                if (serial.StartsWith("<" + contractName)) return serial;
+
+                return "<" + contractName + ">" + serial + "</" + contractName + ">";
+            }
+
+            private string GetContactName<T>()
+            {
+                var contractAttribute = typeof(T).GetCustomAttributes(false)
+                                                 .FirstOrDefault(a => a.GetType().Name.Equals("DataContractAttribute")) 
+                                                 as DataContractAttribute;
+                if (contractAttribute != null) return contractAttribute.Name;
+
+                return null;
+            }
+            #endregion
+        }
+    }
+    <#+
+}
+#>
+<#+
+void WriteMediaGetter()
+{
+    #>protected virtual MediaInfo GetMedia(INode node, string alias)
+    {
+        MediaInfo mediaInfo = null;
+        int Id = GetPropertyInt(node, alias);    
+        if (Id > 0)
+        {
+            DynamicMedia media = new DynamicMedia(Id);
+            mediaInfo = new MediaInfo();
+            mediaInfo.Id = Id;
+            mediaInfo.Url = media.NiceUrl;
+        }
+        return mediaInfo;
+    }
+    <#+
+}
+
+void WriteNodeListGetter()
+{
+    #>protected virtual IntList GetIntListValue(INode node, string alias)
+    {
+        IntList intList = null;
+        string xml = node.GetProperty(alias).Value;
+        if (!string.IsNullOrEmpty(xml))
+        {
+            if (xml.StartsWith("<MultiNodePicker"))
+            {
+                var picker = Deserialize<MultiNodePicker>(xml);
+                intList = picker.NodeIdList;
+            }
+        }
+        return intList;
+    }
+
+    protected virtual StringList GetStringListValue(INode node, string alias)
+    {
+        StringList stringList = null;
+        string xml = node.GetProperty(alias).Value;
+        if (!string.IsNullOrEmpty(xml))
+        {
+            if (xml.StartsWith("<SqlCheckBoxList"))
+            {
+                var checkboxlist = Deserialize<_SqlCheckBoxList>(xml);
+                stringList = checkboxlist.Values;
+            }
+        }
+        return stringList;
+    }
+    <#+
+ }
+
+ void WriteMultiUrlPickerGetter()
+ {
+    #>protected virtual HyperLinkList GetHyperLinkList(INode node, string alias)
+    {
+        HyperLinkList linkList = null;
+        string xml = node.GetProperty(alias).Value;
+        if (!string.IsNullOrEmpty(xml))
+        {
+            if (xml.StartsWith("<multi-url-picker"))
+            {
+                var picker = Deserialize<MultiUrlPicker>(xml);
+                if (picker != null && picker.Links != null)
+                {
+                    linkList = new HyperLinkList();
+                    foreach(_HyperLink hyperLink in picker.Links)
+                    {
+                        linkList.Add(ConvertHyperLinkInteral(hyperLink));
+                    }
+                }
+            }
+        }
+        return linkList;
+    }
+    <#+
+}
+
+void WriteHyperLinkTypeGetter()
+{
+    #>protected virtual HyperLink GetHyperLink(INode node, string alias)
+    {
+        HyperLink result = null;
+        _HyperLink data = null;
+        string xml = node.GetProperty(alias).Value;
+        if (!string.IsNullOrEmpty(xml))
+        {
+            data = Deserialize<_HyperLink>(xml);
+            result = ConvertHyperLinkInteral(data);
+        }
+        return result;
+    }
+
+    protected virtual HyperLink ConvertHyperLinkInteral(_HyperLink hyperLink)
+    {
+        HyperLink result = null;
+        if (hyperLink != null)
+        {
+            result = new HyperLink();
+            result.Url = hyperLink.Url;
+            result.LinkTitle = hyperLink.LinkTitle;
+                
+            bool boolValue;
+            if (bool.TryParse(hyperLink.NewWindow, out boolValue))
+                result.NewWindow = boolValue;
+
+            int intValue = 0;
+            if (int.TryParse(hyperLink.NodeId, out intValue))
+                result.NodeId = intValue;
+        }
+        return result;
+    }
+    <#+
+}
+
+void WriteXmlTypeGetter()
+{
+    #>protected virtual T GetXmlType<T>(INode node, string alias) where T : class, new()
+    {
+        T data = null;
+        string xml = node.GetProperty(alias).Value;
+        if (!string.IsNullOrEmpty(xml))
+        {
+            data = Deserialize<T>(xml);
+        }
+        return data;
+    }
+    <#+
+}
+
+void WriteDataGridGetter(DataGridTypeItem dataGridTypeItem)
+{
+  if (dataGridTypeItem != null)
+  {
+      var gridClass = dataGridTypeItem.IdentifierName;
+      #>protected virtual <#=gridClass#> Get<#=gridClass#>(INode node, string alias)
+      {
+        <#=gridClass#> gridModel = null;
+        string gridXml = node.GetProperty(alias).Value;
+        if (!string.IsNullOrEmpty(gridXml))
+        {
+            gridModel = new <#=gridClass#>(); 
+            var gridItems = Deserialize<_<#=gridClass#>>(gridXml);
+            foreach(var gridItem in gridItems.Items)
+            {
+                var item = new <#=gridClass#>.Item();
+                <#+ WriteDataGridColumns(dataGridTypeItem);#>
+                gridModel.Items.Add(item);
+            }
+        }
+        return gridModel;
+      }
+      <#+
+  }
+}
+
+void WriteDataGridColumns(DataGridTypeItem dataGridTypeItem)
+{
+   foreach(var column in dataGridTypeItem.Columns) 
+   {
+        switch(column.DataType.Type)
+        {
+            case "string" : WriteDataColumnStringSetter(column.IdentifierName, column.Alias); break;
+            case "int" : WriteDataColumnIntSetter(column.IdentifierName, column.Alias); break;
+            case "bool" : WriteDataColumnBoolSetter(column.IdentifierName, column.Alias); break;
+            case "DateTime" : WriteDataColumnDateTimeSetter(column.IdentifierName, column.Alias); break;
+            case "enum" : WriteDataColumnEnumSetter(column.DataType, column.IdentifierName, column.Alias); break;
+			case "UrlPicker" : WriteDataColumnUrlPickerSetter(column.IdentifierName, column.Alias); break;
+			default: WriteDataColumnUnsupportedSetter(column.DataType.Type, column.IdentifierName, column.Alias); break;
+        }
+   }
+}
+
+void WriteDataColumnEnumSetter(DataTypeItem dataType, string identifier, string alias)
+{
+    #>{
+        <#=dataType.ModelType#> value;
+        if (gridItem.<#=alias#> != null)
+        {
+            if (Enum.TryParse(gridItem.<#=alias#>, false, out value))
+                item.<#=identifier#> = value;
+        }
+    }
+    <#+
+}
+
+
+void WriteDataColumnStringSetter(string identifier, string alias)
+{
+    #>item.<#=identifier#> = gridItem.<#=alias#>;
+    <#+
+}
+
+void WriteDataColumnIntSetter(string identifier, string alias)
+{
+    #>{
+        int value = 0;
+        if (gridItem.<#=alias#> != null)
+        {
+            int.TryParse(gridItem.<#=alias#>, out value);
+        }
+        item.<#=identifier#> = value;
+    }<#+
+}
+
+void WriteDataColumnDateTimeSetter(string identifier, string alias)
+{
+    #>
+    {
+        DateTime value = DateTime.MinValue;
+        if (gridItem.<#=alias#> != null)
+        {
+		    string format = GetDateTimeFormat(item.GetType().GetProperty("<#=identifier#>"));
+            value = GetDateFromString(gridItem.<#=alias#>, format);
+        }
+        item.<#=identifier#> = value;
+    }
+    <#+
+}
+
+void WriteDataColumnBoolSetter(string identifier, string alias)
+{
+    #>
+    {
+        bool value = false;
+        if (gridItem.<#=alias#> != null)
+        {
+            if (gridItem.<#=alias#> == "1") value = true;
+            else if (gridItem.<#=alias#>.ToUpper() == "TRUE") value = true;
+        }
+        item.<#=identifier#> = value;
+    }
+    <#+
+}
+
+void WriteDataColumnUrlPickerSetter(string identifier, string alias)
+{
+    #>
+    {
+        HyperLink value = null;
+		_HyperLink data = null;
+        if (!string.IsNullOrEmpty(gridItem.<#=alias#>))
+        {
+			data = Deserialize<_HyperLink>(gridItem.<#=alias#>);
+			value = ConvertHyperLinkInteral(data);
+        }
+        item.<#=identifier#> = value;
+    }
+    <#+
+}
+
+void WriteDataColumnUnsupportedSetter(string type, string identifier, string alias)
+{
+    #>
+    {
+	   // Unsupported type '<#=type#>' for alias '<#=alias#>' and property 'item.<#=identifier#>'
+    }
+    <#+
+}
+
+#>
+<#+
+CodeGenTools Code { get; set; }
+#>

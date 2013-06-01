@@ -1,0 +1,376 @@
+﻿<#@ template language="C#" debug="false" hostspecific="true"#>
+<#@output extension=".cs"#>
+<#@ assembly name="System.Core"#>
+<#@ assembly name="$(ProjectDir)Binaries\UmbCodeGen.dll"#>
+<#@ import namespace="UmbCodeGen.CodeGen" #>
+<#@ import namespace="UmbCodeGen.Models" #>
+<#@ import namespace="System.IO" #>
+<#@include file="MultipleOutputHelper.ttinclude"#>
+<#
+    Code = new CodeGenTools(this);
+    Code.ExcludePropertyRegEx = "^seo|^openGraph";
+
+    var configFile = @"..\..\App_Data\typelib.config";
+    
+    if (Code.LoadMetaData(configFile))
+        GenerateModels();
+#>
+<#+
+void GenerateModels()
+{
+    var manager = Manager.Create(Host, GenerationEnvironment);
+    #>
+    //
+    // Empty file. For each class a separate file is generated.
+    //
+    <#+
+    manager.StartHeader(); 
+    #>
+    //
+    // Auto generated content. Do not modify.
+    //
+    namespace <#=Code.NameSpace()#>
+    {
+        using System;
+        using System.Collections.Generic;
+
+    <#+ manager.EndBlock(); #>
+    <#+ manager.StartNewFile("Enums.cs"); #>
+
+    <#+
+    //*********************************************************
+    // Write Enums
+    //*********************************************************
+    #>
+    #region Enums
+        <#+foreach(var dataType in Code.GetEnumDataTypes())
+        {
+            #>public enum <#=dataType.ModelType#>
+            {
+                <#+foreach(var prevalue in dataType.PreValueItems)
+                {
+                    #><#=Code.IdentifierName(prevalue.Value)#> = <#=prevalue.Id#>, 
+                    <#+
+                }#>
+            }
+            <#+
+        }
+        #>
+        #endregion    
+
+    <#+ manager.EndBlock(); #>
+
+    <#+
+    //*********************************************************
+    // Write DocumentType Models
+    //*********************************************************
+    #>
+        <#+ foreach(var docType in Code.GetDocumentTypes())
+        {
+          var className = Code.ClassName(docType.Alias);
+          manager.StartNewFile(className + ".cs");
+          #>[DocumentType("<#=docType.Alias#>")]
+            public partial class <#=className#> : ModelBase
+          {
+             <#+ foreach(var propType in docType.Properties)
+             {
+                if (Code.IncludeProperty(propType, className))
+                {
+                    var identifierName = Code.PropertyName(propType, className);
+
+                    var modelType = propType.DataType.ModelType;
+
+                    switch(propType.DataType.Type)
+                    {
+                      case "DataGrid" : WriteDataGridSetter(propType, className, identifierName, propType.Alias); break;
+                      case "enum": WriteEnumSetter(propType, className, identifierName, propType.Alias); break;
+                      case "List<enum>": WriteListEnumSetter(propType, className, identifierName, propType.Alias); break;
+                      default: WriteSetter(modelType, identifierName, propType.Alias); break;
+                    }
+                    #>
+
+                    <#+
+                }
+             }
+        #>
+        };
+
+        <#+
+        manager.EndBlock(); 
+        }
+        #>
+    <#+
+    //*********************************************************
+    // Write DataGrid models
+    //*********************************************************
+    #>
+        <#+ foreach(var dataType in Code.GetDataGridTypeItems())
+        {
+            manager.StartNewFile(dataType.IdentifierName + ".cs");
+            #>using System.Runtime.Serialization;
+        
+            public partial class <#=dataType.IdentifierName#> : DataGrid
+            {
+                public <#=dataType.IdentifierName#>()
+                {
+                    Items = new  List<Item>();
+                }
+                public List<Item> Items;
+
+                public partial class Item
+                {
+                    <#+foreach(var column in dataType.Columns)
+                    {
+                        if (column.DataType.Type.Equals("enum"))
+                        {
+                        #>public <#=column.DataType.ModelType#> <#=column.IdentifierName#> { get; set; }
+                        <#+
+                        }else
+                        {
+                        #>public <#=column.DataType.ModelType#> <#=column.IdentifierName#> { get; set; }
+                        <#+
+                        }
+                    }
+                    #>
+                }
+            }
+
+            <#+
+            //*********************************************************
+            // Write DataGrid Serialization models
+            //*********************************************************
+            #>
+
+            [DataContract(Name = "<#=dataType.IdentifierName#>", Namespace = "")]
+            internal class _<#=dataType.IdentifierName#>
+            {
+                public _<#=dataType.IdentifierName#>()
+                {
+                    Items = new List<Item>();
+                }
+
+                [DataMember(Name = "items")]
+                public List<Item> Items;
+
+                [DataContract(Name = "item", Namespace = "")]
+                public class Item
+                {
+                    <#+int order = 0;#>
+                    <#+foreach(var column in dataType.Columns)
+                    {
+                        #>
+                        [DataMember(Name = "<#=column.Alias#>", Order = <#=order.ToString()#>)]
+                        public string <#=column.Alias#>;
+                        <#+
+                        order++;
+                    }
+                    #>
+                }
+            }
+
+            <#+
+            manager.EndBlock(); 
+        }
+        #>
+
+    <#+
+    //*********************************************************
+    // Write base models and attributes
+    //*********************************************************
+    #>
+
+    <#+ manager.StartNewFile("ModelBase.cs"); #>
+    using System.Runtime.Serialization;
+
+    #region Attributes
+
+        [AttributeUsage(AttributeTargets.Property)]
+        public abstract class AliasAttribute : Attribute
+        {
+            public string Alias { get; set; }
+            public AliasAttribute() { }
+            public AliasAttribute(string alias)
+            {
+                this.Alias = alias;
+            }
+        }
+
+        [AttributeUsage(AttributeTargets.Property)]
+        public class PropertyAttribute : AliasAttribute
+        {
+            public PropertyAttribute() { }
+            public PropertyAttribute(string alias) : base(alias)
+            {
+            }
+        }
+
+        [AttributeUsage(AttributeTargets.Class)]
+        public class DocumentTypeAttribute : AliasAttribute
+        {
+            public DocumentTypeAttribute() { }
+            public DocumentTypeAttribute(string alias) : base(alias)
+            {
+            }
+        }
+
+
+        [AttributeUsage(AttributeTargets.Property)]
+        public class ChildrenAttribute : Attribute
+        {
+            public string NodeAlias { get; set; }
+            public bool AllDescendants { get; set; }
+
+            public ChildrenAttribute() { }
+            public ChildrenAttribute(string nodeAlias) : this(nodeAlias, false) { }
+            public ChildrenAttribute(string nodeAlias, bool allDescentants = false)
+            {
+                this.NodeAlias = nodeAlias;
+                this.AllDescendants = allDescentants;
+            }
+        }
+
+		[AttributeUsage(AttributeTargets.Property)]
+        public class DateTimeFormatAttribute : Attribute
+        {
+			public string DateTimeFormat { get; set; }
+
+            public DateTimeFormatAttribute() { }
+            public DateTimeFormatAttribute(string format)
+            {
+				this.DateTimeFormat = format;
+            }
+        }
+    #endregion
+    #region Base Models
+
+        public abstract partial class ModelBase
+        {
+           [Property("NodeId")]
+           public int NodeId { get; set; }
+           [Property("NodeName")]
+           public string NodeName { get; set; }
+           [Property("NodeUrl")]
+           public string NodeUrl { get; set; }
+        }
+
+        public abstract partial class DataGrid
+        {
+        }
+
+        public class MediaInfo
+        {
+           public int Id { get; set; }
+           public string Url { get; set; }
+        }
+
+        public class HyperLink
+        {
+            public bool NewWindow;
+            public int NodeId;
+            public string Url;
+            public string LinkTitle;
+        }
+
+        public class HyperLinkList : List<HyperLink> { }
+
+    #endregion
+    #region Default Serialization models
+
+    <#+
+    //*********************************************************
+    // Write Default Serialization models
+    //*********************************************************
+    #>
+
+        [DataContract(Name = "MultiNodePickerContract", Namespace = "")]
+        public class MultiNodePicker
+        {
+            [DataMember(Name = "MultiNodePicker")]
+            public NodeIdList NodeIdList;
+        }
+
+		public class StringList : List<string> { }
+		public class IntList : List<int> { }
+
+        [CollectionDataContract(ItemName = "nodeId", Namespace = "")]
+        public class NodeIdList : IntList { }
+
+
+        [DataContract(Name = "MultiUrlPicker", Namespace = "")]
+        public class MultiUrlPicker
+        {
+            [DataMember(Name = "multi-url-picker", Order = 0)]
+            public _HyperLinkList Links;
+        }
+
+        [DataContract(Name = "url-picker", Namespace = "")]
+        public class _HyperLink
+        {
+            [DataMember(Name = "new-window", Order = 0)]
+            public string NewWindow;
+
+            [DataMember(Name = "node-id", Order = 1)]
+            public string NodeId;
+
+            [DataMember(Name = "url", Order = 2)]
+            public string Url;
+
+            [DataMember(Name = "link-title", Order = 3)]
+            public string LinkTitle;
+        }
+
+        public class _HyperLinkList : List<_HyperLink> { }
+
+		[DataContract(Name = "SqlCheckBoxListContract", Namespace = "")]
+		public class _SqlCheckBoxList
+		{
+			[DataMember(Name = "SqlCheckBoxList")]
+			public SqlCheckBoxValues Values { get; set;}
+		}
+
+		[CollectionDataContract(ItemName = "value", Namespace = "")]
+		public class SqlCheckBoxValues : StringList { } 
+
+    #endregion
+
+    <#+ manager.EndBlock(); #>
+    <#+ manager.StartFooter(); #>
+    }
+    <#+ manager.EndBlock(); #>
+    <#+ manager.Process(true);#>
+    <#+
+}
+#>
+<#+
+void WriteSetter(string typeName, string identifierName, string alias)
+{
+    #>[Property("<#=alias#>")]
+      public <#=typeName#> <#=identifierName#> { get; set; }
+    <#+
+}
+
+void WriteDataGridSetter(PropertyTypeItem propType, string className, string identifierName, string alias)
+{
+    #>[Property("<#=alias#>")]
+    public <#=propType.DataType.ModelType#> <#=identifierName#> { get; set; }
+    <#+  
+}
+
+void WriteEnumSetter(PropertyTypeItem propType, string className, string identifierName, string alias)
+{
+    #>[Property("<#=alias#>")]
+      public <#=propType.DataType.ModelType#> <#=identifierName#> { get; set; }
+    <#+  
+}
+
+void WriteListEnumSetter(PropertyTypeItem propType, string className, string identifierName, string alias)
+{
+    #>[Property("<#=alias#>")]
+      public List<<#=propType.DataType.ModelType#>> <#=identifierName#> { get; set; }
+    <#+  
+}
+
+#>
+<#+
+CodeGenTools Code { get; set; }
+#>
