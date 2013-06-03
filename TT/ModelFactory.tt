@@ -58,14 +58,14 @@ void GenerateModelFactory()
             #endregion
             #region Protected Methods
 
-            protected virtual T CreateModelInternal<T>(INode node) where T : class, new()
+            private T CreateModelInternal<T>(INode node) where T : class, new()
             {
                 var model = new T();
                 FillModelInternal(model, node);
                 return model;        
             }
 
-            protected virtual void FillModelInternal(object model, INode node)
+            private void FillModelInternal(object model, INode node)
             {
                 foreach (PropertyInfo property in model.GetType().GetProperties())
                 {
@@ -82,11 +82,10 @@ void GenerateModelFactory()
                         {
                             switch (modelType)
                             {
-                                case "HyperLink": FillHyperLinkValue(model, property, propertyAttrib.Alias, node); break;
-                                case "HyperLinkList": FillHyperLinkListValue(model, property, propertyAttrib.Alias, node); break;
+                                case "Hyperlink": FillHyperLinkValue(model, property, propertyAttrib.Alias, node); break;
+                                case "HyperlinkList": FillHyperLinkListValue(model, property, propertyAttrib.Alias, node); break;
                                 case "MediaInfo": FillMediaInfoValue(model, property, propertyAttrib.Alias, node); break;
                                 case "DataGrid": FillDataGridValue(model, property, propertyAttrib.Alias, node); break;
-                                //case "NodeIdList": FillNodeListValue(model, property, propertyAttrib.Alias, node); break; TODO: Obsolete ?
                                 default : FillModelPropertyClass(model, property, propertyAttrib.Alias, node); break;
                             }
                         }
@@ -113,7 +112,7 @@ void GenerateModelFactory()
                 }
             }
 
-            protected virtual string GetPropertyType(PropertyInfo property)
+            private string GetPropertyType(PropertyInfo property)
             {
                 switch (property.PropertyType.Name)
                 {
@@ -134,7 +133,7 @@ void GenerateModelFactory()
                 return property.PropertyType.Name;
             }
 
-            protected virtual void FillModelPropertyClass(object model, PropertyInfo property, string alias, INode node)
+            private void FillModelPropertyClass(object model, PropertyInfo property, string alias, INode node)
             {
                 ConstructorInfo ctor = property.PropertyType.GetConstructor(BindingFlags.Instance | BindingFlags.Public, null, CallingConventions.HasThis, new Type[0], null);
                 if (ctor != null)
@@ -149,7 +148,7 @@ void GenerateModelFactory()
                 }
             }
 
-			protected virtual void FillModelPropertyList(object model, PropertyInfo property, string alias, INode node)
+			private void FillModelPropertyList(object model, PropertyInfo property, string alias, INode node)
             {
                 if (property.PropertyType.GetGenericArguments().Length == 1)
                 {
@@ -162,7 +161,7 @@ void GenerateModelFactory()
                     {
                         switch (type.Name)
                         {
-                            case "HyperLink": this.FillHyperLinkList(model, property, alias, node); break;
+                            case "Hyperlink": this.FillHyperLinkList(model, property, alias, node); break;
                             case "DateTime": this.FillDateTimeList(model, property, alias, node); break;
 							case "String" : this.FillStringList(model, property, alias, node); break;
                             default: this.FillIntList(model, property, alias, node); break;
@@ -171,7 +170,7 @@ void GenerateModelFactory()
                 }
             }
 			
-            protected virtual void FillIntList(object model, PropertyInfo property, string alias, INode node)
+            private void FillIntList(object model, PropertyInfo property, string alias, INode node)
             {
                 if (property.PropertyType.GetGenericArguments().Length == 1)
                 {
@@ -207,7 +206,7 @@ void GenerateModelFactory()
                 }
             }
 
-	        protected virtual void FillStringList(object model, PropertyInfo property, string alias, INode node)
+	        private void FillStringList(object model, PropertyInfo property, string alias, INode node)
 			{
 				if (property.PropertyType.GetGenericArguments().Length == 1)
 				{
@@ -217,7 +216,7 @@ void GenerateModelFactory()
 				}
 			}
 			
-            protected virtual void FillHyperLinkList(object model, PropertyInfo property, string alias, INode node)
+            private void FillHyperLinkList(object model, PropertyInfo property, string alias, INode node)
             {
                 if (property.PropertyType.GetGenericArguments().Length == 1)
                 {
@@ -225,12 +224,12 @@ void GenerateModelFactory()
                     ConstructorInfo ctor = property.PropertyType.GetConstructor(BindingFlags.Instance | BindingFlags.Public, null, CallingConventions.HasThis, new Type[0], null);
                     if (ctor != null)
                     {
-                        HyperLinkList hyperLinkList = this.GetHyperLinkList(node, alias);
+                        HyperlinkList hyperlinkList = this.GetHyperLinkList(node, alias);
                         var instance = ctor.Invoke(BindingFlags.Public, null, new object[0], null) as IList;
-                        if (instance != null && hyperLinkList.Count > 0)
+                        if (instance != null && hyperlinkList.Count > 0)
                         {
-                            foreach (HyperLink hyperLink in hyperLinkList)
-                                instance.Add(hyperLink);
+                            foreach (Hyperlink hyperlink in hyperlinkList)
+                                instance.Add(hyperlink);
 
                             property.SetValue(model, instance, BindingFlags.SetProperty, null, null, null);
                         }
@@ -238,7 +237,7 @@ void GenerateModelFactory()
                 }
             }
 
-            protected virtual void FillDateTimeList(object model, PropertyInfo property, string alias, INode node)
+            private void FillDateTimeList(object model, PropertyInfo property, string alias, INode node)
             {
                 if (property.PropertyType.GetGenericArguments().Length == 1)
                 {
@@ -260,7 +259,7 @@ void GenerateModelFactory()
                 }
             }
 
-            protected virtual void FillModelPropertyChild(object model, PropertyInfo property, string alias, bool allDescendants, INode node)
+            private void FillModelPropertyChild(object model, PropertyInfo property, string alias, bool allDescendants, INode node)
             {
                 ConstructorInfo ctor = property.PropertyType.GetConstructor(BindingFlags.Instance | BindingFlags.Public, null, CallingConventions.HasThis, new Type[0], null);
                 if (ctor != null)
@@ -278,7 +277,7 @@ void GenerateModelFactory()
                 }
             }
 
-            protected virtual void FillModelPropertyChildList(object model, PropertyInfo property, string alias, bool allDescendants, INode node)
+            private void FillModelPropertyChildList(object model, PropertyInfo property, string alias, bool allDescendants, INode node)
             {
                 if (property.PropertyType.GetGenericArguments().Length == 1)
                 {
@@ -302,7 +301,7 @@ void GenerateModelFactory()
                 }
             }
 
-            public IEnumerable<INode> GetDescendants(INode node, string alias, bool allDescendants)
+            private IEnumerable<INode> GetDescendants(INode node, string alias, bool allDescendants)
             {
                 foreach (INode child in node.ChildrenAsList)
                 {
@@ -320,7 +319,7 @@ void GenerateModelFactory()
                 yield break;
             }
 
-            protected virtual void FillModelProperty(object model, PropertyInfo property, string type, string alias, INode node)
+            private void FillModelProperty(object model, PropertyInfo property, string type, string alias, INode node)
             {
                 switch(type)
                 {
@@ -335,7 +334,7 @@ void GenerateModelFactory()
 
             }
 
-			protected virtual void FillEnumValue(object model, PropertyInfo property, string alias, INode node)
+			private void FillEnumValue(object model, PropertyInfo property, string alias, INode node)
 			{
 				string value;
 				value = GetPropertyString(node, alias);
@@ -347,7 +346,7 @@ void GenerateModelFactory()
 				}
 			}
 
-			protected virtual void FillEnumListValue(object model, PropertyInfo property, string alias, INode node)
+			private void FillEnumListValue(object model, PropertyInfo property, string alias, INode node)
 			{
 				string values;
 				values = GetPropertyString(node, alias);
@@ -377,7 +376,7 @@ void GenerateModelFactory()
 				}
 			}
 
-			protected virtual object GetEnumValue(string value, Type type)
+			private object GetEnumValue(string value, Type type)
 			{
 				if (!string.IsNullOrEmpty(value))
 				{
@@ -398,7 +397,7 @@ void GenerateModelFactory()
 			}
 
 
-            protected virtual void FillStringValue(object model, PropertyInfo property, string alias, INode node)
+            private void FillStringValue(object model, PropertyInfo property, string alias, INode node)
             {
                 string value;
                 if (alias.Equals("NodeName"))
@@ -410,7 +409,7 @@ void GenerateModelFactory()
                 property.SetValue(model, value, BindingFlags.SetProperty, null, null, null);
             }
 
-            protected virtual void FillIntValue(object model, PropertyInfo property, string alias, INode node)
+            private void FillIntValue(object model, PropertyInfo property, string alias, INode node)
             {
                 int value;
                 if (alias.Equals("NodeId"))
@@ -420,26 +419,26 @@ void GenerateModelFactory()
                 property.SetValue(model, value, BindingFlags.SetProperty, null, null, null);
             }
 
-            protected virtual void FillDoubleValue(object model, PropertyInfo property, string alias, INode node)
+            private void FillDoubleValue(object model, PropertyInfo property, string alias, INode node)
             {
                 double value = GetPropertyDouble(node, alias);
                 property.SetValue(model, value, BindingFlags.SetProperty, null, null, null);
             }
 
-            protected virtual void FillBoolValue(object model, PropertyInfo property, string alias, INode node)
+            private void FillBoolValue(object model, PropertyInfo property, string alias, INode node)
             {
                 bool value = GetPropertyBool(node, alias);
                 property.SetValue(model, value, BindingFlags.SetProperty, null, null, null);
             }
 
-			protected virtual void FillDateTimeValue(object model, PropertyInfo property, string alias, INode node)
+			private void FillDateTimeValue(object model, PropertyInfo property, string alias, INode node)
 			{
 				string format = GetDateTimeFormat(property);
 				DateTime value = GetPropertyDateTime(node, alias, format);
 				property.SetValue(model, value, BindingFlags.SetProperty, null, null, null);
 			}
 
-			protected virtual string GetDateTimeFormat(PropertyInfo property)
+			private string GetDateTimeFormat(PropertyInfo property)
 			{
 			    string format = null;
 				if (property != null)
@@ -469,38 +468,31 @@ void GenerateModelFactory()
 				return format;
 			}
 
-            protected virtual void FillMediaInfoValue(object model, PropertyInfo property, string alias, INode node)
+            private void FillMediaInfoValue(object model, PropertyInfo property, string alias, INode node)
             {
                 MediaInfo value = GetMedia(node, alias);
                 property.SetValue(model, value, BindingFlags.SetProperty, null, null, null);
             }
 
-			// TODO: obsolete ?
-            //protected virtual void FillNodeListValue(object model, PropertyInfo property, string alias, INode node)
-            //{
-            //    NodeIdList value = GetNodeListValue(node, alias);
-            //    property.SetValue(model, value, BindingFlags.SetProperty, null, null, null);
-            //}
-
-            protected virtual void FillHyperLinkListValue(object model, PropertyInfo property, string alias, INode node)
+            private void FillHyperLinkListValue(object model, PropertyInfo property, string alias, INode node)
             {
-                HyperLinkList value = GetHyperLinkList(node, alias);
+                HyperlinkList value = GetHyperLinkList(node, alias);
                 property.SetValue(model, value, BindingFlags.SetProperty, null, null, null);
             }
 
-            protected virtual void FillHyperLinkValue(object model, PropertyInfo property, string alias, INode node) 
+            private void FillHyperLinkValue(object model, PropertyInfo property, string alias, INode node) 
             {
-                HyperLink value = GetHyperLink(node, alias);
+                Hyperlink value = GetHyperLink(node, alias);
                 property.SetValue(model, value, BindingFlags.SetProperty, null, null, null);
             }
 
-            protected virtual void FillXmlTypeValue<T>(object model, PropertyInfo property, string alias, INode node) where T : class, new()
+            private void FillXmlTypeValue<T>(object model, PropertyInfo property, string alias, INode node) where T : class, new()
             {
                 T value = GetXmlType<T>(node, alias);
                 property.SetValue(model, value, BindingFlags.SetProperty, null, null, null);
             }
 
-            protected virtual void FillDataGridValue(object model, PropertyInfo property, string alias, INode node)
+            private void FillDataGridValue(object model, PropertyInfo property, string alias, INode node)
             {
                 string methodName = "Get" + property.PropertyType.Name;
 
@@ -682,7 +674,7 @@ void GenerateModelFactory()
 <#+
 void WriteMediaGetter()
 {
-    #>protected virtual MediaInfo GetMedia(INode node, string alias)
+    #>private MediaInfo GetMedia(INode node, string alias)
     {
         MediaInfo mediaInfo = null;
         int Id = GetPropertyInt(node, alias);    
@@ -700,7 +692,7 @@ void WriteMediaGetter()
 
 void WriteNodeListGetter()
 {
-    #>protected virtual IntList GetIntListValue(INode node, string alias)
+    #>private IntList GetIntListValue(INode node, string alias)
     {
         IntList intList = null;
         string xml = node.GetProperty(alias).Value;
@@ -715,7 +707,7 @@ void WriteNodeListGetter()
         return intList;
     }
 
-    protected virtual StringList GetStringListValue(INode node, string alias)
+    private StringList GetStringListValue(INode node, string alias)
     {
         StringList stringList = null;
         string xml = node.GetProperty(alias).Value;
@@ -734,9 +726,9 @@ void WriteNodeListGetter()
 
  void WriteMultiUrlPickerGetter()
  {
-    #>protected virtual HyperLinkList GetHyperLinkList(INode node, string alias)
+    #>private HyperlinkList GetHyperLinkList(INode node, string alias)
     {
-        HyperLinkList linkList = null;
+        HyperlinkList linkList = null;
         string xml = node.GetProperty(alias).Value;
         if (!string.IsNullOrEmpty(xml))
         {
@@ -745,10 +737,10 @@ void WriteNodeListGetter()
                 var picker = Deserialize<MultiUrlPicker>(xml);
                 if (picker != null && picker.Links != null)
                 {
-                    linkList = new HyperLinkList();
-                    foreach(_HyperLink hyperLink in picker.Links)
+                    linkList = new HyperlinkList();
+                    foreach(_Hyperlink hyperlink in picker.Links)
                     {
-                        linkList.Add(ConvertHyperLinkInteral(hyperLink));
+                        linkList.Add(ConvertHyperLinkInteral(hyperlink));
                     }
                 }
             }
@@ -760,34 +752,34 @@ void WriteNodeListGetter()
 
 void WriteHyperLinkTypeGetter()
 {
-    #>protected virtual HyperLink GetHyperLink(INode node, string alias)
+    #>private Hyperlink GetHyperLink(INode node, string alias)
     {
-        HyperLink result = null;
-        _HyperLink data = null;
+        Hyperlink result = null;
+        _Hyperlink data = null;
         string xml = node.GetProperty(alias).Value;
         if (!string.IsNullOrEmpty(xml))
         {
-            data = Deserialize<_HyperLink>(xml);
+            data = Deserialize<_Hyperlink>(xml);
             result = ConvertHyperLinkInteral(data);
         }
         return result;
     }
 
-    protected virtual HyperLink ConvertHyperLinkInteral(_HyperLink hyperLink)
+    private Hyperlink ConvertHyperLinkInteral(_Hyperlink hyperlink)
     {
-        HyperLink result = null;
-        if (hyperLink != null)
+        Hyperlink result = null;
+        if (hyperlink != null)
         {
-            result = new HyperLink();
-            result.Url = hyperLink.Url;
-            result.LinkTitle = hyperLink.LinkTitle;
+            result = new Hyperlink();
+            result.Url = hyperlink.Url;
+            result.LinkTitle = hyperlink.LinkTitle;
                 
             bool boolValue;
-            if (bool.TryParse(hyperLink.NewWindow, out boolValue))
+            if (bool.TryParse(hyperlink.NewWindow, out boolValue))
                 result.NewWindow = boolValue;
 
             int intValue = 0;
-            if (int.TryParse(hyperLink.NodeId, out intValue))
+            if (int.TryParse(hyperlink.NodeId, out intValue))
                 result.NodeId = intValue;
         }
         return result;
@@ -797,7 +789,7 @@ void WriteHyperLinkTypeGetter()
 
 void WriteXmlTypeGetter()
 {
-    #>protected virtual T GetXmlType<T>(INode node, string alias) where T : class, new()
+    #>private T GetXmlType<T>(INode node, string alias) where T : class, new()
     {
         T data = null;
         string xml = node.GetProperty(alias).Value;
@@ -815,7 +807,7 @@ void WriteDataGridGetter(DataGridTypeItem dataGridTypeItem)
   if (dataGridTypeItem != null)
   {
       var gridClass = dataGridTypeItem.IdentifierName;
-      #>protected virtual <#=gridClass#> Get<#=gridClass#>(INode node, string alias)
+      #>private <#=gridClass#> Get<#=gridClass#>(INode node, string alias)
       {
         <#=gridClass#> gridModel = null;
         string gridXml = node.GetProperty(alias).Value;
@@ -919,11 +911,11 @@ void WriteDataColumnUrlPickerSetter(string identifier, string alias)
 {
     #>
     {
-        HyperLink value = null;
-		_HyperLink data = null;
+        Hyperlink value = null;
+		_Hyperlink data = null;
         if (!string.IsNullOrEmpty(gridItem.<#=alias#>))
         {
-			data = Deserialize<_HyperLink>(gridItem.<#=alias#>);
+			data = Deserialize<_Hyperlink>(gridItem.<#=alias#>);
 			value = ConvertHyperLinkInteral(data);
         }
         item.<#=identifier#> = value;

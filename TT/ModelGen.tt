@@ -263,7 +263,7 @@ void GenerateModels()
            public string Url { get; set; }
         }
 
-        public class HyperLink
+        public class Hyperlink
         {
             public bool NewWindow;
             public int NodeId;
@@ -271,7 +271,7 @@ void GenerateModels()
             public string LinkTitle;
         }
 
-        public class HyperLinkList : List<HyperLink> { }
+        public class HyperlinkList : List<Hyperlink> { }
 
     #endregion
     #region Default Serialization models
@@ -300,11 +300,11 @@ void GenerateModels()
         public class MultiUrlPicker
         {
             [DataMember(Name = "multi-url-picker", Order = 0)]
-            public _HyperLinkList Links;
+            public _HyperlinkList Links;
         }
 
         [DataContract(Name = "url-picker", Namespace = "")]
-        public class _HyperLink
+        public class _Hyperlink
         {
             [DataMember(Name = "new-window", Order = 0)]
             public string NewWindow;
@@ -319,7 +319,7 @@ void GenerateModels()
             public string LinkTitle;
         }
 
-        public class _HyperLinkList : List<_HyperLink> { }
+        public class _HyperlinkList : List<_Hyperlink> { }
 
 		[DataContract(Name = "SqlCheckBoxListContract", Namespace = "")]
 		public class _SqlCheckBoxList
