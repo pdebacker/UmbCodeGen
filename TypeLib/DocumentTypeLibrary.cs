@@ -146,8 +146,8 @@ namespace UmbCodeGen.TypeLib
                 case "List<enum>": return Naming.PascalCase(Naming.IdentifierName(dataType.DataTypeName));
                 case "DataGrid": return Naming.PascalCase(Naming.IdentifierName(dataType.DataTypeName));
                 case "MultiNodePicker": return "List<int>";
-                case "MultiUrlPicker": return "List<HyperLink>";
-                case "UrlPicker": return "HyperLink"; 
+                case "MultiUrlPicker": return "List<Hyperlink>";
+                case "UrlPicker": return "Hyperlink"; 
             }
             switch (dataType.ControlTypeName)
             {
