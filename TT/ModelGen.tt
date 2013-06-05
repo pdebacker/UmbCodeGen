@@ -1,7 +1,7 @@
 ﻿<#@ template language="C#" debug="false" hostspecific="true"#>
 <#@output extension=".cs"#>
 <#@ assembly name="System.Core"#>
-<#@ assembly name="$(ProjectDir)Binaries\UmbCodeGen.dll"#>
+<#@ assembly name="$(ProjectDir)bin\UmbCodeGen.dll"#>
 <#@ import namespace="UmbCodeGen.CodeGen" #>
 <#@ import namespace="UmbCodeGen.Models" #>
 <#@ import namespace="System.IO" #>
