@@ -6,11 +6,11 @@ using System.Runtime.InteropServices;
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
 [assembly: AssemblyTitle("UmbCodeGen")]
-[assembly: AssemblyDescription("")]
+[assembly: AssemblyDescription("Umbraco Code Generator")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("RHM")]
+[assembly: AssemblyCompany("")]
 [assembly: AssemblyProduct("UmbCodeGen")]
-[assembly: AssemblyCopyright("Copyright © RHM 2013")]
+[assembly: AssemblyCopyright("Peter de Backer")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
