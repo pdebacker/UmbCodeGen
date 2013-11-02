@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using umbraco.cms.businesslogic.web;
 using umbraco.cms.businesslogic.propertytype;
 using System.IO;
@@ -75,17 +76,25 @@ namespace UmbCodeGen.TypeLib
 
         private DataTypeItem BuildDataTypeItem(DataTypeDefinition dataTypeDefinition)
         {
-            var dataTypeItem = new DataTypeItem();
-            dataTypeItem.Id = dataTypeDefinition.DataType.DataTypeDefinitionId;
-            dataTypeItem.ControlTypeName = dataTypeDefinition.DataType.GetType().FullName;
+            try
+            {
+                var dataTypeItem = new DataTypeItem();
+                dataTypeItem.Id = dataTypeDefinition.DataType.DataTypeDefinitionId;
+                dataTypeItem.ControlTypeName = dataTypeDefinition.DataType.GetType().FullName;
 
-            var node = new CMSNode(dataTypeItem.Id);
-            dataTypeItem.DataTypeName = node.Text;
+                var node = new CMSNode(dataTypeItem.Id);
+                dataTypeItem.DataTypeName = node.Text;
 
-            dataTypeItem.PreValueItems = this.BuildPreValues(dataTypeDefinition);
-            dataTypeItem.Type = this.DetermineType(dataTypeItem);
-            dataTypeItem.ModelType = DetermineModelType(dataTypeItem);
-            return dataTypeItem;
+                dataTypeItem.PreValueItems = this.BuildPreValues(dataTypeDefinition);
+                dataTypeItem.Type = this.DetermineType(dataTypeItem);
+                dataTypeItem.ModelType = DetermineModelType(dataTypeItem);
+                return dataTypeItem;
+
+            }
+            catch (Exception ex)
+            {
+                throw new DataTypeException(string.Format("Data type {0} '{1}' could not be loaded.", dataTypeDefinition.Id.ToString(), dataTypeDefinition.Text));
+            }
         }
 
         private string DetermineType(DataTypeItem dataType)
@@ -147,7 +156,7 @@ namespace UmbCodeGen.TypeLib
                 case "DataGrid": return Naming.PascalCase(Naming.IdentifierName(dataType.DataTypeName));
                 case "MultiNodePicker": return "List<int>";
                 case "MultiUrlPicker": return "List<Hyperlink>";
-                case "UrlPicker": return "Hyperlink"; 
+                case "UrlPicker": return "Hyperlink";
             }
             switch (dataType.ControlTypeName)
             {
@@ -172,17 +181,25 @@ namespace UmbCodeGen.TypeLib
 
         private DocumentTypeItem BuildDocumentTypeItem(DocumentType documentType)
         {
-            var documentTypeItem = new DocumentTypeItem();
-            documentTypeItem.Alias = documentType.Alias;
-            documentTypeItem.Id = documentType.Id;
-            documentTypeItem.ParentId = documentType.MasterContentType;
-            documentTypeItem.Text = documentType.Text;
-            documentTypeItem.Description = documentType.Description;
+            try
+            {
+                var documentTypeItem = new DocumentTypeItem();
+                documentTypeItem.Alias = documentType.Alias;
+                documentTypeItem.Id = documentType.Id;
+                documentTypeItem.ParentId = documentType.MasterContentType;
+                documentTypeItem.Text = documentType.Text;
+                documentTypeItem.Description = documentType.Description;
 
-            foreach (var property in documentType.PropertyTypes)
-                documentTypeItem.Properties.Add(this.BuildPropertyTypeItem(property));
+                foreach (var property in documentType.PropertyTypes)
+                    documentTypeItem.Properties.Add(this.BuildPropertyTypeItem(property));
 
-            return documentTypeItem;
+                return documentTypeItem;
+            }
+            catch (Exception ex)
+            {
+                throw new DataTypeException(string.Format("DocumentType {0} '{1}' build exception.", documentType.Id.ToString(), documentType.Text));
+
+            }
         }
 
         private PropertyTypeItem BuildPropertyTypeItem(PropertyType propertyType)
@@ -207,32 +224,39 @@ namespace UmbCodeGen.TypeLib
 
         private List<PreValueItem> BuildPreValues(DataTypeDefinition dataTypeDefinition)
         {
-            bool allEmpty = true;
-            var prevalues = PreValues.GetPreValues(dataTypeDefinition.DataType.DataTypeDefinitionId);
-            if (prevalues != null && prevalues.Count > 0)
+            try
             {
-                var preValueItems = new List<PreValueItem>();
-                foreach (DictionaryEntry item in prevalues)
+                bool allEmpty = true;
+                var prevalues = PreValues.GetPreValues(dataTypeDefinition.DataType.DataTypeDefinitionId);
+                if (prevalues != null && prevalues.Count > 0)
                 {
-                    var preValue = item.Value as PreValue;
-                    if (preValue != null)
+                    var preValueItems = new List<PreValueItem>();
+                    foreach (DictionaryEntry item in prevalues)
                     {
-                        var preValueItem = new PreValueItem()
-                            {
-                                Id = preValue.Id,
-                                SortOrder = preValue.SortOrder,
-                                Value = preValue.Value
-                            };
-                        preValueItems.Add(preValueItem);
-                        if (!string.IsNullOrEmpty(preValueItem.Value)) allEmpty = false;
+                        var preValue = item.Value as PreValue;
+                        if (preValue != null)
+                        {
+                            var preValueItem = new PreValueItem()
+                                {
+                                    Id = preValue.Id,
+                                    SortOrder = preValue.SortOrder,
+                                    Value = preValue.Value
+                                };
+                            preValueItems.Add(preValueItem);
+                            if (!string.IsNullOrEmpty(preValueItem.Value)) allEmpty = false;
+                        }
+
                     }
+                    if (allEmpty) return null;
 
+                    return preValueItems;
                 }
-                if (allEmpty) return null;
-
-                return preValueItems;
+                return null;
             }
-            return null;
+            catch (Exception ex)
+            {
+                throw new DataTypeException(string.Format("Data type {0} '{1}' prevalues could not be loaded.", dataTypeDefinition.Id.ToString(), dataTypeDefinition.Text), ex);
+            }
         }
 
         #endregion

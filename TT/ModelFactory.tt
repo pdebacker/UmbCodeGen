@@ -8,10 +8,10 @@
 <#@ import namespace="System.Linq" #>
 <#@ import namespace="System.Reflection" #>
 <#
-    var configFile = @"..\..\App_Data\typelib.config";
     Code = new CodeGenTools(this);
     Code.ExcludePropertyRegEx = "^Seo|^Social|^OgNote|tip";
     
+    var configFile = @"..\..\App_Data\typelib.config";
     if (Code.LoadMetaData(configFile))
         GenerateModelFactory();
 #>

@@ -79,6 +79,8 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Serialization\SerializationHelper.cs" />
     <Compile Include="Models\DocumentTypeItem.cs" />
+    <Compile Include="TypeLib\DataTypeException.cs" />
+    <Compile Include="TypeLib\DocumentTypeException.cs" />
     <Compile Include="TypeLib\DocumentTypeLibrary.cs" />
     <Compile Include="Models\PreValueItem.cs" />
     <Compile Include="Models\PropertyTypeItem.cs" />
